@@ -6,7 +6,20 @@
 <script>
 /* Back button support: each open popup/menu/preview adds one history step, so the phone's back
    button (or the browser's) closes it instead of leaving the page. */
-/* Always open at the very top: forget any #section in the address and any old scroll position */try{history.scrollRestoration="manual";}catch(e){}try{if(location.hash){history.replaceState(null,"",location.pathname+location.search);}}catch(e){}addEventListener("load",function(){window.scrollTo(0,0);});addEventListener("pageshow",function(e){if(e.persisted)window.scrollTo(0,0);});
+/* First visit: always open at the very top with the intro.
+   Coming back with the Back button (e.g. from the author profile): skip the intro and return to the same spot. */
+(function(){
+  var nav = (performance.getEntriesByType && performance.getEntriesByType("navigation")[0]) || {};
+  var back = nav.type === "back_forward" || (performance.navigation && performance.navigation.type === 2);
+  var saved = null; try { saved = sessionStorage.getItem("ls-y"); } catch(e){}
+  window.__returning = !!(back && saved !== null);
+  try{history.scrollRestoration="manual";}catch(e){}
+  if (!window.__returning){ try{if(location.hash){history.replaceState(null,"",location.pathname+location.search);}}catch(e){} }
+  addEventListener("load",function(){ window.scrollTo(0, window.__returning ? (+saved || 0) : 0); });
+  function remember(){ try { if (window.__entered) sessionStorage.setItem("ls-y", String(Math.round(scrollY))); } catch(e){} }
+  addEventListener("pagehide", remember);
+  document.addEventListener("visibilitychange", function(){ if (document.visibilityState === "hidden") remember(); });
+})();
 window.OV=(function(){var stack=[];
   function open(id,fn){stack.push({id:id,fn:fn});try{history.pushState({ov:id},"");}catch(e){}}
   function close(id){var t=stack[stack.length-1];if(t&&t.id===id){history.back();return true;}return false;}
@@ -893,6 +906,7 @@ body.noscroll{overflow:hidden}
 /* Answer the tap straight away, even while the rest of the page (and its videos) is still downloading */
 (function(){
   var L = document.getElementById("loader"); if (!L) return;
+  if (window.__returning){ L.style.transition = "none"; L.classList.add("gone"); L.style.visibility = "hidden"; document.body.classList.remove("lock"); window.__entered = true; window.__skipIntro = true; return; }
   function go(){
     if (window.__entered) return; window.__entered = true; window.__wantSound = true;
     L.classList.add("gone"); document.body.classList.remove("lock");
@@ -1283,7 +1297,13 @@ body.noscroll{overflow:hidden}
   document.getElementById("enterSound").addEventListener("click", function(){ begin(true); });
   loader.addEventListener("click", function(){ begin(true); });
   document.getElementById("enterQuiet").addEventListener("click", function(){ begin(false); });
-  if (window.__entered) begin(true);                 // tapped while the page was still loading
+  if (window.__skipIntro){                          // came back with the Back button: no intro
+    begin(true);
+    film.addEventListener("playing", function(){
+      var r = hero.getBoundingClientRect(); if (r.bottom < innerHeight * .25 || r.top > innerHeight * .75) film.pause();
+    }, {once:true});
+  }
+  else if (window.__entered) begin(true);            // tapped while the page was still loading
   setTimeout(function(){ if (!began){ begin(false); soundOnNextTouch(); } }, reduce ? 1200 : 9000);   // nobody tapped: start silently
 })();
 </script>
