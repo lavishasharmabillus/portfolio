@@ -893,7 +893,13 @@ body.noscroll{overflow:hidden}
 /* Answer the tap straight away, even while the rest of the page (and its videos) is still downloading */
 (function(){
   var L = document.getElementById("loader"); if (!L) return;
-  function go(){ if (window.__entered) return; window.__entered = true; L.classList.add("gone"); document.body.classList.remove("lock"); }
+  function go(){
+    if (window.__entered) return; window.__entered = true; window.__wantSound = true;
+    L.classList.add("gone"); document.body.classList.remove("lock");
+    // play() inside the tap tells the browser this video may use sound later, once its file is ready
+    var f = document.getElementById("film");
+    if (f){ f.muted = false; try { var q = f.play(); if (q && q.catch) q.catch(function(){}); } catch(e){} }
+  }
   L.addEventListener("click", go);
   L.addEventListener("keydown", function(e){ if (e.key === "Enter" || e.key === " ") go(); });
 })();
@@ -1226,7 +1232,22 @@ body.noscroll{overflow:hidden}
   }, {threshold:.25}).observe(hero);
 
   function label(){ soundBtn.textContent = film.muted ? "Sound on" : "Sound off"; }
-  soundBtn.addEventListener("click", function(){ film.muted = !film.muted; label(); });
+  // keep the Sound button honest whatever started the video
+  film.addEventListener("volumechange", label);
+  film.addEventListener("playing", function(){ if (!started){ started = true; soundBtn.style.display = "block"; } label(); });
+  var userChoseSound = false;
+  soundBtn.addEventListener("click", function(){ userChoseSound = true; film.muted = !film.muted; label(); });
+  // she asked for sound but the browser said no: turn it on with the first touch, click or key press
+  function soundOnNextTouch(){
+    function on(e){
+      if (e && e.target && e.target.closest && e.target.closest("#sound")) return;   // the Sound button handles itself
+      ["pointerdown","keydown","touchend"].forEach(function(n){ removeEventListener(n, on, true); });
+      if (userChoseSound || !film.muted) return;
+      film.muted = false; label();
+      if (film.paused && !film.ended && started) film.play().catch(function(){});
+    }
+    ["pointerdown","keydown","touchend"].forEach(function(n){ addEventListener(n, on, true); });
+  }
 
   var began = false;
   function begin(withSound){
@@ -1244,9 +1265,18 @@ body.noscroll{overflow:hidden}
     var p = film.play();
     var ok = function(){ started = true; soundBtn.style.display = "block"; label(); };
     if (p && p.then){
-      p.then(ok).catch(function(){                 // sound was blocked: play silently
+      var blocked = function(){                    // the browser really refused sound: play silently for now
         film.muted = true;
-        film.play().then(ok).catch(function(){ cta.classList.add("show"); });
+        film.play().then(function(){ ok(); soundOnNextTouch(); }).catch(function(){ cta.classList.add("show"); });
+      };
+      p.then(ok).catch(function(err){
+        // Only NotAllowedError means "no sound allowed". Anything else (AbortError, NotSupportedError) just means
+        // the video moved on to its next source, e.g. the copy inside the page: try again with sound once it is ready
+        if (!err || err.name !== "NotAllowedError"){
+          film.addEventListener("canplay", function(){ var r = film.play(); if (r && r.then) r.then(ok).catch(blocked); else ok(); }, {once:true});
+          return;
+        }
+        blocked();
       });
     } else ok();
   }
@@ -1254,7 +1284,7 @@ body.noscroll{overflow:hidden}
   loader.addEventListener("click", function(){ begin(true); });
   document.getElementById("enterQuiet").addEventListener("click", function(){ begin(false); });
   if (window.__entered) begin(true);                 // tapped while the page was still loading
-  setTimeout(function(){ if (!began) begin(false); }, reduce ? 1200 : 9000);   // nobody tapped: start silently
+  setTimeout(function(){ if (!began){ begin(false); soundOnNextTouch(); } }, reduce ? 1200 : 9000);   // nobody tapped: start silently
 })();
 </script>
 <script>
