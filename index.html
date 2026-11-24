@@ -889,6 +889,15 @@ body.noscroll{overflow:hidden}
   <button class="tap" id="enterSound" type="button">Tap to enter</button>
   <button id="enterQuiet" type="button" hidden>Enter silently</button>
 </div>
+<script>
+/* Answer the tap straight away, even while the rest of the page (and its videos) is still downloading */
+(function(){
+  var L = document.getElementById("loader"); if (!L) return;
+  function go(){ if (window.__entered) return; window.__entered = true; L.classList.add("gone"); document.body.classList.remove("lock"); }
+  L.addEventListener("click", go);
+  L.addEventListener("keydown", function(e){ if (e.key === "Enter" || e.key === " ") go(); });
+})();
+</script>
 
 <div class="prog" id="prog"></div>
 <header class="top">
@@ -1219,7 +1228,9 @@ body.noscroll{overflow:hidden}
   function label(){ soundBtn.textContent = film.muted ? "Sound on" : "Sound off"; }
   soundBtn.addEventListener("click", function(){ film.muted = !film.muted; label(); });
 
+  var began = false;
   function begin(withSound){
+    if (began) return; began = true; window.__entered = true;
     loader.classList.add("gone");
     document.body.classList.remove("lock");
     setTimeout(function(){ loader.remove(); }, 1000);
@@ -1242,7 +1253,8 @@ body.noscroll{overflow:hidden}
   document.getElementById("enterSound").addEventListener("click", function(){ begin(true); });
   loader.addEventListener("click", function(){ begin(true); });
   document.getElementById("enterQuiet").addEventListener("click", function(){ begin(false); });
-  setTimeout(function(){ if (!loader.classList.contains("gone")) begin(false); }, reduce ? 1200 : 9000);   // nobody tapped: start silently
+  if (window.__entered) begin(true);                 // tapped while the page was still loading
+  setTimeout(function(){ if (!began) begin(false); }, reduce ? 1200 : 9000);   // nobody tapped: start silently
 })();
 </script>
 <script>
